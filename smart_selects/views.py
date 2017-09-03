@@ -1,11 +1,13 @@
 from django.http import HttpResponse
+from django.conf import settings
+from django.core.exceptions import PermissionDenied
 
 try:
     from django.apps import apps
     get_model = apps.get_model
 except ImportError:
     from django.db.models.loading import get_model
-    
+
 try:
     import json
 except ImportError:
@@ -15,11 +17,22 @@ from smart_selects.utils import (get_keywords, sort_results, serialize_results,
                                  get_queryset)
 
 
+ALLOWED_MODELS = [item.lower() for item in getattr(settings, 'SMART_SELECTS_ALLOWED_MODELS', [])]
+
+
+def validate_model(app, model):
+    """Check if the target model is allowed to be queried."""
+    model_string = u'{}.{}'.format(app, model).lower()
+    if model_string not in ALLOWED_MODELS:
+        raise PermissionDenied("Query activity not allowed")
+
+
 def filterchain(request, app, model, field, value, manager=None):
+    validate_model(app, model)
+
     model_class = get_model(app, model)
     keywords = get_keywords(field, value)
     queryset = get_queryset(model_class, manager)
-
     results = queryset.filter(**keywords)
 
     # Sort results if model doesn't include a default ordering.
@@ -34,6 +47,7 @@ def filterchain(request, app, model, field, value, manager=None):
 
 def filterchain_all(request, app, model, field, value):
     """Returns filtered results followed by excluded results below."""
+    validate_model(app, model)
 
     model_class = get_model(app, model)
     keywords = get_keywords(field, value)
